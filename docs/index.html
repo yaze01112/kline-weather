@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>K線氣象台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+body{margin:0}
+/* Layout: a forecast bulletin. Masthead, a strip of "stations" (one per stock), then chart + forecast card side by side, then the track record. */
+:root{
+  --bg:#edf0f4; --panel:#f8f9fb; --ink:#152130; --muted:#5d6a7a; --line:#d3d9e1;
+  --fan:#3c58d6; --fan-soft:rgba(60,88,214,.16); --up:#d2323e; --down:#11845a;
+  --display:"Noto Serif TC","Songti TC",serif; --body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e131a;--panel:#151c26;--ink:#e5eaf1;--muted:#8d99a8;--line:#273141;--fan:#8fa3ff;--fan-soft:rgba(143,163,255,.17);--up:#f0525c;--down:#2fb57f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e131a;--panel:#151c26;--ink:#e5eaf1;--muted:#8d99a8;--line:#273141;--fan:#8fa3ff;--fan-soft:rgba(143,163,255,.17);--up:#f0525c;--down:#2fb57f;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.6;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+.wrap{max-width:1120px;margin:0 auto;display:grid;gap:22px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:14px}
+h1{font-family:var(--display);font-weight:900;font-size:clamp(34px,6vw,56px);line-height:1;margin:0;letter-spacing:.04em}
+h1 small{display:block;font-family:var(--body);font-weight:500;font-size:14px;letter-spacing:.02em;color:var(--muted);margin-top:10px}
+.issue{font-size:13px;color:var(--muted);text-align:right;line-height:1.7}
+@media (max-width:600px){.issue{text-align:left}}
+.issue b{color:var(--ink);font-weight:600}
+.stations{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.st{all:unset;cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:2px;transition:border-color .15s,transform .15s}
+.st:hover{transform:translateY(-1px)}
+.st:focus-visible{outline:2px solid var(--fan);outline-offset:2px}
+.st[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.st .c{font-size:12px;color:var(--muted)}
+.st .n{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st .p{font-size:20px;font-weight:600}
+.meter{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.meter i{display:block;height:100%}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+.chart-head{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.chart-head h2{font-family:var(--display);font-weight:900;font-size:26px;margin:0}
+.chart-head h2 span{font-family:var(--mono);font-weight:400;font-size:15px;color:var(--muted);margin-left:8px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:8px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.cv{position:relative;width:100%}
+canvas{display:block;width:100%}
+#big{height:380px}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;line-height:1.5;padding:6px 9px;border-radius:6px;white-space:nowrap;opacity:0;transition:opacity .1s}
+.fc{display:grid;gap:16px}
+.lbl{font-size:12px;letter-spacing:.08em;color:var(--muted)}
+.big{font-family:var(--display);font-weight:900;font-size:64px;line-height:1}
+.big small{font-size:26px}
+.rows{display:grid;gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.row{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.row span:first-child{color:var(--muted)}
+.dots{display:flex;gap:6px;margin-top:6px}
+.dot{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700;border:1.5px solid var(--line);color:var(--muted)}
+.dot.hit{border-color:var(--ink);color:var(--ink)}
+.verdict{font-size:13.5px;line-height:1.7;border-left:3px solid var(--fan);padding-left:10px}
+.lower{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+h3{font-size:16px;margin:0 0 4px}
+.sub{font-size:13px;color:var(--muted);margin:0 0 10px}
+#back{height:200px}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{font-weight:500;color:var(--muted);text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+tr.sel td{background:var(--fan-soft)}
+.up{color:var(--up)} .dn{color:var(--down)}
+.notes{font-size:13.5px;color:var(--muted);max-width:72ch;display:grid;gap:8px}
+.notes b{color:var(--ink)}
+@media (max-width:900px){.stations{grid-template-columns:repeat(4,minmax(0,1fr))}.main,.lower{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:480px){.stations{grid-template-columns:repeat(2,minmax(0,1fr))}#big{height:300px}.big{font-size:52px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.wait #stations{min-height:64px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>K線氣象台<small>用 Kronos 預報台股未來 20 個交易日，像天氣預報一樣看機率，不看單一答案</small></h1>
+    <div class="issue">發布 <b class="num" id="gen"></b><br>模型 <b>Kronos-small</b> · 回看 <b class="num" id="lb"></b> 日 · <b class="num" id="np"></b> 條模擬路徑</div>
+  </header>
+
+  <nav class="stations" id="stations" aria-label="選擇股票"></nav>
+
+  <section class="main">
+    <div class="card">
+      <div class="chart-head">
+        <h2 id="title"></h2>
+        <div class="legend"><span><i style="background:var(--up)"></i>漲</span><span><i style="background:var(--down)"></i>跌</span><span><i style="background:var(--fan-soft);outline:1px solid var(--fan)"></i>80% 預測區間</span><span><i style="background:var(--fan);height:2px"></i>中位數</span></div>
+      </div>
+      <div class="cv"><canvas id="big" aria-label="歷史 K 線與未來 20 日預測區間"></canvas><div class="tip" id="tip"></div></div>
+    </div>
+    <aside class="card fc" aria-live="polite">
+      <div><div class="lbl">20 日後收盤高於今天的機率</div><div class="big num" id="prob"></div></div>
+      <div class="rows">
+        <div class="row"><span>今天收盤</span><b class="num" id="last"></b></div>
+        <div class="row"><span>20 日後中位數</span><b class="num" id="med"></b></div>
+        <div class="row"><span>80% 區間</span><b class="num" id="band"></b></div>
+        <div class="row"><span>中位數報酬</span><b class="num" id="ret"></b></div>
+      </div>
+      <div class="rows">
+        <div class="lbl">過去 6 次預報的方向對不對</div>
+        <div class="dots" id="dots"></div>
+        <div class="row"><span>實際落在 80% 區間</span><b class="num" id="inband"></b></div>
+      </div>
+      <div class="verdict" id="verdict"></div>
+    </aside>
+  </section>
+
+  <section class="lower">
+    <div class="card">
+      <h3>上一次預報 vs 實際</h3>
+      <p class="sub" id="backsub"></p>
+      <div class="cv"><canvas id="back" aria-label="20 個交易日前的預報與實際收盤"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>全部測站</h3>
+      <p class="sub">點一列切換。命中是過去 6 次 20 日預報裡，漲跌方向猜對的次數。</p>
+      <div class="tbl"><table><thead><tr><th>股票</th><th>收盤</th><th>上漲機率</th><th>中位數報酬</th><th>命中</th><th>落在區間</th></tr></thead><tbody id="tb"></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div><b>怎麼算的。</b>每檔股票取最近 <span class="num" id="lb2"></span> 個交易日的開高低收量，交給 Kronos-small 一根一根往後生成 20 根 K 線，重複 <span class="num" id="np2"></span> 次得到 <span class="num" id="np3"></span> 條可能的走勢。上漲機率是其中 20 日後收盤高於今天的比例，藍色區域是 10% 到 90% 分位。股價來自 FinMind 台股日成交資訊（失敗時改用 Yahoo 財經），每個交易日 16:17 由 GitHub 雲端主機自動重跑，不需要開電腦。</div>
+    <div><b>回測怎麼做。</b>假裝站在 20、40、60、80、100、120 個交易日前，只用當時看得到的資料做同樣的預報，再跟後來實際的收盤比。區間如果做得好，實際價格應該大約 80% 的時間落在藍色區域裡。</div>
+    <div><b>實測下來的問題。</b>Kronos 在日線上對漲幅很大的股票會明顯偏空，回看期拉長到 400 日時，景碩被預測 20 日跌 70%，實際只跌 22%，因此這裡改用 120 日回看。它的訓練資料以分鐘線為主，日線準度沒有論文圖表那麼好，請把這頁當成股智通之外的第二意見，不要直接當成買賣訊號。這不是投資建議。</div>
+  </section>
+</div>
+
+<script>
+let D;
+const $ = (id) => document.getElementById(id);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const pct = (v, d = 1) => (v > 0 ? "+" : "") + (v * 100).toFixed(d) + "%";
+const fmt = (v) => v >= 1000 ? v.toFixed(0) : v >= 100 ? v.toFixed(1) : v.toFixed(2);
+const probColor = (p) => p >= 0.5 ? css("--up") : css("--down");
+let cur = 0;
+function boot() {
+
+try { const s = localStorage.getItem("kronos-sel"); if (s !== null && D.stocks[+s]) cur = +s; } catch (e) {}
+
+$("gen").textContent = D.generated; $("lb").textContent = D.lookback; $("np").textContent = D.paths;
+$("lb2").textContent = D.lookback; $("np2").textContent = D.paths; $("np3").textContent = D.paths;
+
+D.stocks.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "st"; b.type = "button"; b.dataset.i = i;
+  b.innerHTML = `<span class="c num">${s.code} · ${s.market}</span><span class="n">${s.name}</span><span class="p num"></span><span class="meter"><i></i></span>`;
+  b.onclick = () => select(i);
+  $("stations").appendChild(b);
+  const tr = document.createElement("tr"); tr.dataset.i = i; tr.style.cursor = "pointer"; tr.onclick = () => select(i);
+  const hits = s.tests.reduce((a, t) => a + t.hit, 0), band = s.tests.reduce((a, t) => a + t.inBand, 0) / s.tests.length;
+  tr.innerHTML = `<td>${s.code} ${s.name}</td><td class="num">${fmt(s.last)}</td><td class="num ${s.upProb >= .5 ? "up" : "dn"}">${Math.round(s.upProb * 100)}%</td><td class="num ${s.expRet >= 0 ? "up" : "dn"}">${pct(s.expRet)}</td><td class="num">${hits}/6</td><td class="num">${Math.round(band * 100)}%</td>`;
+  $("tb").appendChild(tr);
+});
+
+function paintStations() {
+  document.querySelectorAll(".st").forEach((b) => {
+    const s = D.stocks[+b.dataset.i];
+    b.setAttribute("aria-pressed", +b.dataset.i === cur);
+    const p = b.querySelector(".p"); p.textContent = Math.round(s.upProb * 100) + "%"; p.style.color = probColor(s.upProb);
+    const m = b.querySelector(".meter i"); m.style.width = Math.max(4, s.upProb * 100) + "%"; m.style.background = probColor(s.upProb);
+  });
+  document.querySelectorAll("#tb tr").forEach((tr) => tr.classList.toggle("sel", +tr.dataset.i === cur));
+}
+
+function select(i) {
+  cur = i; try { localStorage.setItem("kronos-sel", i); } catch (e) {}
+  const s = D.stocks[i], n = s.median.length - 1;
+  $("title").innerHTML = `${s.name}<span>${s.code} · ${s.lastDate.slice(5).replace("-", "/")} 收盤</span>`;
+  $("prob").innerHTML = Math.round(s.upProb * 100) + "<small>%</small>"; $("prob").style.color = probColor(s.upProb);
+  $("last").textContent = fmt(s.last); $("med").textContent = fmt(s.median[n]);
+  $("band").textContent = fmt(s.p10[n]) + " – " + fmt(s.p90[n]);
+  $("ret").textContent = pct(s.expRet); $("ret").className = "num " + (s.expRet >= 0 ? "up" : "dn");
+  $("dots").innerHTML = s.tests.slice().reverse().map((t) => `<span class="dot ${t.hit ? "hit" : ""}" title="${t.start} 起：預測 ${pct(t.predRet)}，實際 ${pct(t.realRet)}">${t.hit ? "✓" : "✕"}</span>`).join("");
+  const hits = s.tests.reduce((a, t) => a + t.hit, 0), band = s.tests.reduce((a, t) => a + t.inBand, 0) / s.tests.length;
+  $("inband").textContent = Math.round(band * 100) + "%";
+  const dir = s.upProb >= 0.6 ? "偏多" : s.upProb <= 0.4 ? "偏空" : "沒有明確方向";
+  const trust = hits >= 5 && band >= 0.6 ? "過去預報方向和區間都還算可靠" : hits >= 4 ? "過去方向命中普通，區間僅供參考" : "過去預報常猜錯方向，這次的參考價值低";
+  $("verdict").textContent = `Kronos 對${s.name}未來 20 日${dir}，${trust}。`;
+  const bt = s.tests[0];
+  $("backsub").textContent = `${bt.start} 收盤 ${fmt(bt.base)} 時的預報：中位數 ${pct(bt.predRet)}，實際 ${pct(bt.realRet)}，方向${bt.hit ? "猜對" : "猜錯"}。`;
+  paintStations(); drawBig(); drawBack();
+}
+
+function setup(cv) {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w: r.width, h: r.height };
+}
+function niceTicks(lo, hi, n) {
+  const span = hi - lo, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => span / s <= n) || 10 * mag;
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) out.push(+v.toFixed(6)); return out;
+}
+
+let geo = null;
+function drawBig() {
+  const s = D.stocks[cur], cv = $("big"), { g, w, h } = setup(cv);
+  const H = s.history, F = s.future, N = H.length + F.length;
+  const padL = 6, padR = 58, padT = 10, padB = 26, pw = w - padL - padR, ph = h - padT - padB;
+  let lo = Math.min(...H.map((r) => r[3]), ...s.p10), hi = Math.max(...H.map((r) => r[2]), ...s.p90);
+  const m = (hi - lo) * 0.06; lo -= m; hi += m;
+  const X = (i) => padL + (i + 0.5) * pw / N, Y = (v) => padT + (hi - v) / (hi - lo) * ph;
+  const line = css("--line"), muted = css("--muted"), fan = css("--fan"), fanSoft = css("--fan-soft"), up = css("--up"), dn = css("--down"), ink = css("--ink");
+  g.font = "11px " + css("--mono"); g.textBaseline = "middle";
+  niceTicks(lo, hi, 5).forEach((v) => { g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.moveTo(padL, Math.round(Y(v)) + .5); g.lineTo(padL + pw, Math.round(Y(v)) + .5); g.stroke(); g.fillStyle = muted; g.textAlign = "left"; g.fillText(fmt(v), padL + pw + 8, Y(v)); });
+  // month labels
+  g.textAlign = "center"; g.textBaseline = "top"; let lastM = "";
+  [...H.map((r) => r[0]), ...F].forEach((d, i) => { const mo = d.slice(0, 7); if (mo !== lastM) { if (lastM) { g.fillStyle = muted; g.fillText(+d.slice(5, 7) + "月", X(i), padT + ph + 8); } lastM = mo; } });
+  // today divider
+  const x0 = X(H.length - 0.5);
+  g.fillStyle = fanSoft; g.globalAlpha = .35; g.fillRect(x0, padT, padL + pw - x0, ph); g.globalAlpha = 1;
+  g.strokeStyle = ink; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x0, padT); g.lineTo(x0, padT + ph); g.stroke(); g.setLineDash([]);
+  g.fillStyle = ink; g.textAlign = "left"; g.textBaseline = "top"; g.font = "600 11px " + css("--body"); g.fillText("今天", x0 + 5, padT + 2);
+  // candles
+  const bw = Math.max(1, pw / N * 0.62);
+  H.forEach((r, i) => { const [, o, hh, l, c] = r, col = c >= o ? up : dn, x = X(i); g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(Math.round(x) + .5, Y(hh)); g.lineTo(Math.round(x) + .5, Y(l)); g.stroke();
+    const y1 = Y(Math.max(o, c)), y2 = Y(Math.min(o, c)); g.fillRect(x - bw / 2, y1, bw, Math.max(1, y2 - y1)); });
+  // fan: anchored at last close
+  const base = H[H.length - 1][4], xi = (k) => X(H.length - 1 + k);
+  const band = (a, b) => { g.beginPath(); g.moveTo(xi(0), Y(base)); a.forEach((v, k) => g.lineTo(xi(k + 1), Y(v))); for (let k = b.length - 1; k >= 0; k--) g.lineTo(xi(k + 1), Y(b[k])); g.closePath(); };
+  band(s.p90, s.p10); g.fillStyle = fanSoft; g.fill();
+  g.globalAlpha = .28; g.strokeStyle = fan; g.lineWidth = 1;
+  s.paths.forEach((p) => { g.beginPath(); g.moveTo(xi(0), Y(base)); p.forEach((v, k) => g.lineTo(xi(k + 1), Y(v))); g.stroke(); });
+  g.globalAlpha = 1; g.lineWidth = 2.2; g.beginPath(); g.moveTo(xi(0), Y(base)); s.median.forEach((v, k) => g.lineTo(xi(k + 1), Y(v))); g.stroke();
+  const ex = xi(s.median.length), ey = Y(s.median[s.median.length - 1]);
+  g.fillStyle = fan; g.beginPath(); g.arc(ex, ey, 3.5, 0, 7); g.fill();
+  geo = { X, Y, N, H, F, padL, pw, s };
+}
+
+function drawBack() {
+  const s = D.stocks[cur], t = s.tests[0], cv = $("back"), { g, w, h } = setup(cv);
+  if (!t.actual) return;
+  const n = t.actual.length, padL = 6, padR = 58, padT = 10, padB = 22, pw = w - padL - padR, ph = h - padT - padB;
+  let lo = Math.min(t.base, ...t.p10, ...t.actual), hi = Math.max(t.base, ...t.p90, ...t.actual); const m = (hi - lo) * .08; lo -= m; hi += m;
+  const X = (k) => padL + k / n * pw, Y = (v) => padT + (hi - v) / (hi - lo) * ph;
+  const line = css("--line"), muted = css("--muted"), fan = css("--fan"), ink = css("--ink");
+  g.font = "11px " + css("--mono"); g.textBaseline = "middle"; g.textAlign = "left";
+  niceTicks(lo, hi, 4).forEach((v) => { g.strokeStyle = line; g.beginPath(); g.moveTo(padL, Math.round(Y(v)) + .5); g.lineTo(padL + pw, Math.round(Y(v)) + .5); g.stroke(); g.fillStyle = muted; g.fillText(fmt(v), padL + pw + 8, Y(v)); });
+  g.textBaseline = "top"; g.textAlign = "center"; g.fillStyle = muted;
+  [0, Math.floor(n / 2), n - 1].forEach((k) => g.fillText(t.days[k].slice(5).replace("-", "/"), X(k + 1), padT + ph + 6));
+  g.beginPath(); g.moveTo(X(0), Y(t.base)); t.p90.forEach((v, k) => g.lineTo(X(k + 1), Y(v))); for (let k = n - 1; k >= 0; k--) g.lineTo(X(k + 1), Y(t.p10[k])); g.closePath(); g.fillStyle = css("--fan-soft"); g.fill();
+  g.strokeStyle = fan; g.lineWidth = 2; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(X(0), Y(t.base)); t.median.forEach((v, k) => g.lineTo(X(k + 1), Y(v))); g.stroke(); g.setLineDash([]);
+  g.strokeStyle = ink; g.lineWidth = 2; g.beginPath(); g.moveTo(X(0), Y(t.base)); t.actual.forEach((v, k) => g.lineTo(X(k + 1), Y(v))); g.stroke();
+  g.fillStyle = ink; g.beginPath(); g.arc(X(n), Y(t.actual[n - 1]), 3.5, 0, 7); g.fill();
+  g.font = "600 11px " + css("--body"); g.textAlign = "right"; g.textBaseline = "bottom"; g.fillText("實際", X(n) - 6, Y(t.actual[n - 1]) - 4);
+  g.fillStyle = fan; g.fillText("預報中位數", X(n) - 6, Y(t.median[n - 1]) + (t.median[n - 1] > t.actual[n - 1] ? -4 : 16));
+}
+
+const tip = $("tip");
+$("big").addEventListener("pointermove", (e) => {
+  if (!geo) return; const r = e.currentTarget.getBoundingClientRect(), x = e.clientX - r.left;
+  const i = Math.floor((x - geo.padL) / geo.pw * geo.N); if (i < 0 || i >= geo.N) { tip.style.opacity = 0; return; }
+  let html;
+  if (i < geo.H.length) { const [d, o, hh, l, c] = geo.H[i]; html = `${d}<br>開 ${fmt(o)}　高 ${fmt(hh)}<br>低 ${fmt(l)}　收 <b>${fmt(c)}</b>`; }
+  else { const k = i - geo.H.length, s = geo.s; html = `${s.future[k]}（預報第 ${k + 1} 天）<br>中位數 <b>${fmt(s.median[k])}</b><br>80% 區間 ${fmt(s.p10[k])} – ${fmt(s.p90[k])}`; }
+  tip.innerHTML = html; tip.style.opacity = 1;
+  const tw = tip.offsetWidth; tip.style.left = Math.min(Math.max(0, x + 12), r.width - tw) + "px"; tip.style.top = Math.max(0, e.clientY - r.top - 70) + "px";
+});
+$("big").addEventListener("pointerleave", () => (tip.style.opacity = 0));
+document.addEventListener("keydown", (e) => { if (e.key === "ArrowRight") select((cur + 1) % D.stocks.length); if (e.key === "ArrowLeft") select((cur + D.stocks.length - 1) % D.stocks.length); });
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { drawBig(); drawBack(); }, 80); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => select(cur));
+new MutationObserver(() => select(cur)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+select(cur);
+}
+
+fetch("forecast.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then((d) => { D = d; boot(); })
+  .catch(() => { $("title").textContent = "還沒有預報資料"; $("verdict").textContent = "第一次預報要等 GitHub Actions 跑完（約 15 分鐘），完成後重新整理這頁。"; });
+</script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+name: 每日 Kronos 預報
+
+on:
+  schedule:
+    # 台灣時間週一到週五 16:17（收盤後資料已更新）
+    - cron: "17 8 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: forecast
+  cancel-in-progress: false
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 取得 Kronos 原始碼（固定版本）
+        run: |
+          git clone https://github.com/shiyu-coder/Kronos.git Kronos
+          git -C Kronos checkout 67b630e67f6a18c9e9be918d9b4337c960db1e9a
+
+      - name: 快取模型與套件
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/pip
+          key: kronos-small-v1
+
+      - name: 安裝套件（PyTorch CPU 版）
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy einops huggingface_hub safetensors tqdm pandas
+
+      - name: 跑預報
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: python predict.py
+
+      - name: 存回 repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/forecast.json
+          git diff --cached --quiet || git commit -m "預報 $(TZ=Asia/Taipei date +%F)"
+          git push
